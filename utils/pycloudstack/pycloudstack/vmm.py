@@ -18,16 +18,30 @@ import json
 import libvirt
 import libvirt_qemu
 from .cmdrunner import NativeCmdRunner
+from .cluster import KubeVirtCluster
 from .dut import DUT
 from .virtxml import VirtXml
-from .vmparam import VM_TYPE_LEGACY, VM_TYPE_EFI, VM_TYPE_TD, VM_TYPE_SGX, \
-    VM_STATE_SHUTDOWN, VM_STATE_RUNNING, VM_STATE_PAUSE, \
-    VM_STATE_SHUTDOWN_IN_PROGRESS, BOOT_TYPE_GRUB, BIOS_BINARY_LEGACY_CENTOS, \
-    BIOS_BINARY_LEGACY_UBUNTU, QEMU_EXEC_CENTOS, QEMU_EXEC_UBUNTU, \
-    BIOS_OVMF, VM_TYPE_TD_PERF, VM_TYPE_EFI_PERF, VM_TYPE_LEGACY_PERF, \
-    BIOS_OVMF_VTPM
+from .vmparam import (
+    VM_TYPE_LEGACY,
+    VM_TYPE_EFI,
+    VM_TYPE_TD,
+    VM_TYPE_SGX,
+    VM_STATE_SHUTDOWN,
+    VM_STATE_RUNNING,
+    VM_STATE_PAUSE,
+    VM_STATE_SHUTDOWN_IN_PROGRESS,
+    BOOT_TYPE_GRUB,
+    BIOS_BINARY_LEGACY_CENTOS,
+    BIOS_BINARY_LEGACY_UBUNTU,
+    QEMU_EXEC_CENTOS,
+    QEMU_EXEC_UBUNTU,
+    BIOS_OVMF,
+    VM_TYPE_TD_PERF,
+    VM_TYPE_EFI_PERF,
+    VM_TYPE_LEGACY_PERF,
+)
 
-__author__ = 'cpio'
+__author__ = "cpio"
 
 LOG = logging.getLogger(__name__)
 
@@ -133,22 +147,21 @@ class VMMLibvirt(VMMBase):
         VM_TYPE_SGX: "sgx-base",
         VM_TYPE_TD_PERF: "tdx-base-perf",
         VM_TYPE_EFI_PERF: "ovmf-base-perf",
-        VM_TYPE_LEGACY_PERF: "legacy-base-perf"
+        VM_TYPE_LEGACY_PERF: "legacy-base-perf",
     }
 
     def __init__(self, vminst):
         super().__init__(vminst)
         self._virt_conn = self._connect_virt()
-        assert self._virt_conn is not None, "Fail to connect libvirt, please make"\
+        assert self._virt_conn is not None, (
+            "Fail to connect libvirt, please make"
             "sure the libvirt is started and current user in libvirt group"
+        )
         self._xml = self._prepare_domain_xml()
         self._ip = None
 
-
     def _prepare_domain_xml(self):
-        xmlobj = VirtXml.clone(
-            self._TEMPLATE[self.vminst.vmtype],
-            self.vminst.name)
+        xmlobj = VirtXml.clone(self._TEMPLATE[self.vminst.vmtype], self.vminst.name)
         xmlobj.memory = self.vminst.vmspec.memsize
         xmlobj.uuid = self.vminst.vmid
         xmlobj.imagefile = self.vminst.image.filepath
@@ -162,10 +175,15 @@ class VMMLibvirt(VMMBase):
 
         if self.vminst.cpu_ids:
             xmlobj.bind_cpuids(self.vminst.cpu_ids)
+
+        if self.vminst.mem_numa is not None:
             xmlobj.set_mem_numa(self.vminst.mem_numa)
 
         if self.vminst.hugepages:
             xmlobj.set_hugepage_params(self.vminst.hugepage_size)
+
+        if self.vminst.driver:
+            xmlobj.set_driver(self.vminst.driver)
 
         if self.vminst.vsock:
             xmlobj.set_vsock(self.vminst.vsock_cid)
@@ -196,7 +214,6 @@ class VMMLibvirt(VMMBase):
         """
         if self.vminst.vmtype in [VM_TYPE_TD, VM_TYPE_TD_PERF]:
             xmlobj.set_vtpm_param(self.vminst.vtpm_path, self.vminst.vtpm_log)
-            xmlobj.loader = BIOS_OVMF_VTPM
 
     def _set_cpu_params_xml(self, xmlobj):
         """
@@ -220,10 +237,15 @@ class VMMLibvirt(VMMBase):
             xmlobj.loader = bios_legacy
             xmlobj.set_cpu_params(
                 "host,host-phys-bits,+sgx,+sgx-debug,+sgx-exinfo,"
-                "+sgx-kss,+sgx-mode64,+sgx-provisionkey,+sgx-tokenkey,+sgx1,+sgx2,+sgxlc")
+                "+sgx-kss,+sgx-mode64,+sgx-provisionkey,+sgx-tokenkey,+sgx1,+sgx2,+sgxlc"
+            )
             xmlobj.set_epc_params(self.vminst.vmspec.epc)
         elif self.vminst.vmtype in [VM_TYPE_TD, VM_TYPE_TD_PERF]:
             xmlobj.loader = BIOS_OVMF
+
+            # If TD has hugepage_path, set it to xml
+            if self.vminst.hugepage_path is not None:
+                xmlobj.set_hugepage_path(self.vminst.hugepage_path)
 
             param_cpu = ""
             if DUT.get_cpu_base_freq() < 1000000:
@@ -238,7 +260,6 @@ class VMMLibvirt(VMMBase):
 
             xmlobj.set_cpu_params(param_cpu)
 
-
     def _connect_virt(self):
         LOG.debug("Create libvirt connection")
         try:
@@ -246,7 +267,8 @@ class VMMLibvirt(VMMBase):
             return self._virt_conn
         except libvirt.libvirtError:
             LOG.error(
-                "Fail to connect libvirt, please make sure current user in libvirt group")
+                "Fail to connect libvirt, please make sure current user in libvirt group"
+            )
             assert False
         return None
 
@@ -282,7 +304,7 @@ class VMMLibvirt(VMMBase):
         Get vtpm ID
         """
         dom = self._get_domain()
-        vtpm_id = re.search('<vtpmid>(.*)</vtpmid>', dom.XMLDesc()).group(1)
+        vtpm_id = re.search("<vtpmid>(.*)</vtpmid>", dom.XMLDesc()).group(1)
         return vtpm_id
 
     def create(self, stop_at_begining=True):
@@ -431,7 +453,8 @@ class VMMLibvirt(VMMBase):
 
         dom = self._get_domain()
         vm_mac_address = re.search(
-            r"<mac address='([a-zA-Z0-9:]+)'", dom.XMLDesc(0)).groups()
+            r"<mac address='([a-zA-Z0-9:]+)'", dom.XMLDesc(0)
+        ).groups()
         if vm_mac_address is None:
             LOG.warning("Could not find the available MAC address for VM")
             return None
@@ -444,8 +467,9 @@ class VMMLibvirt(VMMBase):
 
             for line in runner.stdout:
                 ipaddr = re.search(
-                    r'([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})', line)
-                macaddr = re.search(r'(\w+:\w+:\w+:\w+:\w+:\w+)', line)
+                    r"([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})", line
+                )
+                macaddr = re.search(r"(\w+:\w+:\w+:\w+:\w+:\w+)", line)
                 if ipaddr is None or macaddr is None:
                     continue
                 if macaddr.groups(0)[0] == vm_mac_address[0]:
@@ -456,8 +480,12 @@ class VMMLibvirt(VMMBase):
             retry -= 1
             time.sleep(1)
 
-        LOG.debug("IP address of %s: %s (duration: %d seconds)",
-                  self.vminst.name, self._ip, time.time() - tstart)
+        LOG.debug(
+            "IP address of %s: %s (duration: %d seconds)",
+            self.vminst.name,
+            self._ip,
+            time.time() - tstart,
+        )
         return self._ip
 
     def update_kernel_cmdline(self, cmdline):
@@ -493,7 +521,8 @@ class VMMLibvirt(VMMBase):
         Reboot VM using QEMU Guest agent 'guest-shutdown' command, mode "reboot".
         """
         return self._qemu_agent_command(
-            '{"execute": "guest-shutdown", "arguments": {"mode": "reboot"}}')
+            '{"execute": "guest-shutdown", "arguments": {"mode": "reboot"}}'
+        )
 
     def qemu_agent_file_write(self, path, content):
         """
@@ -501,19 +530,24 @@ class VMMLibvirt(VMMBase):
         """
         # pylint: disable=consider-using-f-string
         ret = self._qemu_agent_command(
-            '{"execute": "guest-file-open", "arguments":{"path": "%s", "mode": "w+"}}' % path)
-        assert 'return' in ret
+            '{"execute": "guest-file-open", "arguments":{"path": "%s", "mode": "w+"}}'
+            % path
+        )
+        assert "return" in ret
         j = json.loads(ret)
-        filedescriptor = j['return']
+        filedescriptor = j["return"]
         # pylint: disable=consider-using-f-string
         ret = self._qemu_agent_command(
-            '{"execute": "guest-file-write", "arguments" : {"handle": %s, "buf-b64": "%s" }}' %
-            (filedescriptor, content))
-        assert 'return' in ret
+            '{"execute": "guest-file-write", "arguments" : {"handle": %s, "buf-b64": "%s" }}'
+            % (filedescriptor, content)
+        )
+        assert "return" in ret
         # pylint: disable=consider-using-f-string
         ret = self._qemu_agent_command(
-            '{"execute": "guest-file-close", "arguments":{"handle": %s }}' % filedescriptor)
-        assert 'return' in ret
+            '{"execute": "guest-file-close", "arguments":{"handle": %s }}'
+            % filedescriptor
+        )
+        assert "return" in ret
         return True
 
     def qemu_agent_file_read(self, path):
@@ -522,18 +556,108 @@ class VMMLibvirt(VMMBase):
         """
         # pylint: disable=consider-using-f-string
         ret = self._qemu_agent_command(
-            '{"execute": "guest-file-open", "arguments":{"path": "%s", "mode": "r"}}' % path)
-        assert 'return' in ret
+            '{"execute": "guest-file-open", "arguments":{"path": "%s", "mode": "r"}}'
+            % path
+        )
+        assert "return" in ret
         j = json.loads(ret)
-        filedescriptor = j['return']
+        filedescriptor = j["return"]
         # pylint: disable=consider-using-f-string
         content = self._qemu_agent_command(
-            '{"execute": "guest-file-read", "arguments" : {"handle": %s }}' % filedescriptor)
-        assert 'return' in ret
+            '{"execute": "guest-file-read", "arguments" : {"handle": %s }}'
+            % filedescriptor
+        )
+        assert "return" in ret
         # pylint: disable=consider-using-f-string
         ret = self._qemu_agent_command(
-            '{"execute": "guest-file-close", "arguments": {"handle": %s }}' % filedescriptor)
-        assert 'return' in ret
+            '{"execute": "guest-file-close", "arguments": {"handle": %s }}'
+            % filedescriptor
+        )
+        assert "return" in ret
 
         j = json.loads(content)
-        return j['return']['buf-b64']
+        return j["return"]["buf-b64"]
+
+
+class VMMKubeVirt(VMMBase):
+    """
+    Implementation Class for VMMBase base on kubevirt binding.
+    """
+    def __init__(self, vminst):
+        super().__init__(vminst)
+        self.kube_cluster = None
+        self.tdvm = None
+
+    def load_kubeconfig(self, kubeconfig=None):
+        """
+        Load kubeconfig and init kubevirt_cluster controller
+        """
+        self.kube_cluster = KubeVirtCluster(config_file=kubeconfig)
+
+    def load_tdvm_template(self, tdvm_template):
+        """
+        Load tdvm json file
+        """
+        with open(tdvm_template, encoding="utf8") as json_data:
+            self.tdvm = json.load(json_data)
+
+    def create(self, stop_at_begining=True):
+        """
+        Create TDVM
+        """
+        self.kube_cluster.create_tdvm(self.tdvm)
+        if stop_at_begining is not True:
+            self.kube_cluster.launch_tdvm(self.vminst.name)
+
+    def start(self):
+        """
+        Launch TDVM instance
+        """
+        self.kube_cluster.launch_tdvm(self.vminst.name)
+
+    def shutdown(self):
+        """
+        Shutdown TDVM instance
+        """
+        self.kube_cluster.shutdown_tdvm(self.vminst.name)
+
+    def destroy(self, is_undefined=True):
+        """
+        Delete TDVM
+        """
+        self.kube_cluster.delete_tdvm(self.vminst.name)
+
+    def reboot(self):
+        """
+        Reboot TDVM
+        """
+        self.kube_cluster.shutdown_tdvm(self.vminst.name)
+        self.kube_cluster.launch_tdvm(self.vminst.name)
+
+    def state(self):
+        """
+        Get TDVM status
+        """
+        info = self.kube_cluster.get_tdvm(self.vminst.name)
+        return info["status"]["printableStatus"]
+
+    def get_ip(self, force_refresh=False):
+        """
+        Get TDVM IP address
+        """
+        return self.kube_cluster.get_tdvm_ip(self.vminst.name)
+
+    def resume(self):
+        raise NotImplementedError
+
+    def suspend(self):
+        raise NotImplementedError
+
+    def update_kernel(self, kernel):
+        raise NotImplementedError
+
+    def update_kernel_cmdline(self, cmdline):
+        raise NotImplementedError
+
+    def update_vmspec(self, new_vmspec):
+        raise NotImplementedError
